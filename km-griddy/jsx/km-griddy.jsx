@@ -56,6 +56,7 @@
     var columnSpacingStatic = columnSpacingGroup.add("statictext", undefined, "Spacing:");
     var columnSpacingEdit = columnSpacingGroup.add("edittext", undefined, "3");
     columnSpacingEdit.characters = 5;
+    columnSpacingEdit.text = 50;
     
     var rowsGroup = setupPanel.add("group", undefined, "Rows Group");
     rowsGroup.orientation = "row";
@@ -74,6 +75,7 @@
     var rowSpacingStatic = rowSpacingGroup.add("statictext", undefined, "Spacing:");
     var rowSpacingEdit = rowSpacingGroup.add("edittext", undefined, "3");
     rowSpacingEdit.characters = 5;
+    rowSpacingEdit.text = 50;
 
     // Rig Panel
     var rigPanel = win.add("panel", undefined, "Rig");
@@ -104,7 +106,12 @@
     try {
         app.beginUndoGroup("What script does");
 
-
+        var columnAmt = parseInt(inputColsEdit.text);
+        var rowAmt = parseInt(inputRowEdit.text);
+        var columnSpacing = parseInt(columnSpacingEdit.text);
+        var rowSpacing = parseInt(rowSpacingEdit.text);
+        
+        sortGrid(columnAmt,rowAmt,columnSpacing,rowSpacing)
 
       } catch(error) {
         alert("An error occured on line: " + error.line + "\nError message: " + error.message);
@@ -115,34 +122,118 @@
       
     }
 
-    
-
-/* 
+    function getProj(){
         var proj = app.project;
+        if(!proj){
+            alert("Whoops!\rYou don't have a project open currently. Open up an After Effects project or create a new one and try again.")
+            return null
+        }
+
+        return proj;
+    }
+
+
+    function getActiveComp(){
+        var proj = getProj();
+        if(!proj) return null
         var activeComp = proj.activeItem;
 
-        var selectedLayers = activeComp.selectedLayers;
-        var startVal = Math.floor(selectedLayers.length/2);
+        if(!(activeComp && activeComp instanceof CompItem)){
+            alert("Whoops!\r You don't have a composition open. Create a new comp or open one and try again.");
+            return null
+        }
 
-        var columnAmt = parseInt(prompt("Insert amount of columns",startVal.toString()));
-        var startX =  0; 
-        var startY =  0; 
-        var spacing = 50;
+        return activeComp
 
-        function sortItemsIntoGrid(columns){
+    }
 
-            for(var i = 0; i < selectedLayers.length; i++){
-                var cols = i % columns;
-                var row = Math.floor(i/columns);
-                var layer = selectedLayers[i];
+    function getSelLayers(){
+        var comp = getActiveComp();
+        if(!comp) return null;
+
+        var selLayers = comp.selectedLayers;
+        if(selLayers < 1){
+            alert("Whoops!\rYou don't have any layers selected in your comp. Select atleast 1 layer and try again.")
+            return null
+        }
+
+        return selLayers;
+
+    }
+
+
+    function sortGrid(cols,rows,spacingX,spacingY){
+        var comp = getActiveComp();
+        if(!comp) return null;
+        var selLayers = getSelLayers();
+        if(!selLayers) return null;
+
+
+        var firstLayer = selLayers[0];
+
+        var startX = firstLayer.property("ADBE Transform Group").property("ADBE Position").value[0];
+        var startY = firstLayer.property("ADBE Transform Group").property("ADBE Position").value[1];
+        var ctrlLayer;
+        var ctrlLayerName = "Grid Control";
+        for(var b = 1; b<=comp.numLayers; b++){
+            var layer = comp.layer(b);
+            if(layer.parent == comp.layer(ctrlLayerName)){
+                layer.parent = null;
+            }
+
+            if(layer.name === ctrlLayerName && layer instanceof ShapeLayer){
+                ctrlLayer = layer;
+                break;
+            } else {
+                ctrlLayer = comp.layers.addShape();
+                ctrlLayer.name = ctrlLayerName;
+                break;
+            }
+        }
+// Ctrl Layer Setup
+        var ctrlLayerTrans = ctrlLayer.property("ADBE Transform Group");
+        var ctrlPos = ctrlLayerTrans.property("ADBE Position");
+        ctrlLayer.guideLayer = true;
+        ctrlLayer.label = 2;
+
+        var ctrlEffects = ctrlLayer.property("ADBE Effect Parade");
+        var ctrlPointCtrl = ctrlEffects.addProperty("ADBE Point Control");
+        ctrlPointCtrl.property("ADBE Point Control-0001").expression = 
+        'const src = thisComp.layer("'+firstLayer.name+'");\r'+
+        'src.toComp(src.transform.anchorPoint)'
+        var ctrlPosRef =  ctrlPointCtrl.property("ADBE Point Control-0001").value;
+
+        if(ctrlPos.dimensionsSeparated){
+            ctrlLayerTrans.property("ADBE Position_0").setValue(ctrlPosRef[0]);
+            ctrlLayerTrans.property("ADBE Position_1").setValue(ctrlPosRef[1]);
+        } else{
+            ctrlPos.setValue([ctrlPosRef[0],ctrlPosRef[1]])
+        }
+
+
+        while(ctrlEffects.numProperties > 0){
+            ctrlEffects.property(1).remove()
+        }
+
+
+        var found = false;
+        for(var i = 0; i<selLayers.length; i++){
+            var columns = i%cols;
+            var row = Math.floor(i/rows);
+            var layer = selLayers[i];
+            if(!(layer.name === ctrlLayerName)){
+                found = true;
+                layer.parent = ctrlLayer;
                 var layerTrans = layer.property("ADBE Transform Group");
                 var layerPos = layerTrans.property("ADBE Position");
                 var layerScale = layerTrans.property("ADBE Scale");
-                var layerBounds = layer.sourceRectAtTime(activeComp.time,false);
+                var layerBounds = layer.sourceRectAtTime(0,false);
                 var layerWidth = layerBounds.width * layerScale.value[0]/100;
                 var layerHeight = layerBounds.height * layerScale.value[1]/100;
-                var xVal = startX + layerWidth/2 + (cols * (layerWidth + spacing));
-                var yVal = startY + layerHeight/2 + (row *(layerHeight + spacing));
+                
+                var xVal = (columns * (layerWidth + spacingX));
+                var yVal = (row * (layerHeight + spacingY));
+
                 if(layerPos.dimensionsSeparated){
                     layerTrans.property("ADBE Position_0").setValue(xVal);
                     layerTrans.property("ADBE Position_1").setValue(yVal);
@@ -150,10 +241,15 @@
                     layerPos.setValue([xVal,yVal]);
                 }
             }
+        }
 
-            return
-        } */
-    
+        if(!found){
+            alert("Whoops!\rYou only selected your control layer. Don't do that.")
+        }
+
+        return 
+
+    }
     
 
     win.onResizing = win.onResize = function (){
