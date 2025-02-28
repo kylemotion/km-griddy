@@ -1,4 +1,4 @@
-﻿function getBinaryFile(filePath,rawData){
+﻿/* function getBinaryFile(filePath,rawData){
   var file = new File(filePath);
   if(!file.exists){
     createFile(file,rawData);
@@ -22,3 +22,22 @@
     }
   };
 };
+
+*/
+var path = "~/Desktop/km-griddy-rig.ffx";
+// var data = "~/Desktop/km-griddy-rig.txt"; 
+
+
+var f = File(path);
+f.encoding = 'BINARY';
+f.open('e');
+ 
+var binary;
+binary = f.read().toSource();
+ 
+var myFile = new File("~/Desktop/binaryOutput.txt");
+        myFile.open("w");
+        myFile.encoding = "BINARY";
+        myFile.write(binary);
+        myFile.close();
+f.close();

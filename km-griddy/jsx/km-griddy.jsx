@@ -87,7 +87,7 @@
     rigGroup.orientation = "row";
     rigGroup.alignChildren = ["fill", "fill"];
     var rigCheckbox = rigGroup.add("checkbox", undefined, "Create Expression Rig");
-    rigCheckbox.value = false;
+    rigCheckbox.value = true;
 
     // Execute Panel
     var executePanel = win.add("panel", undefined);
@@ -95,10 +95,11 @@
     executePanel.alignment = ["fill", "fill"];
     executePanel.alignChildren = ["fill", "fill"];
     executePanel.margins = margins;
-    var helpButton = executePanel.add("button", undefined, "Help");
     var runButton = executePanel.add("button", undefined, "Run Griddy!");
+    var helpButton = executePanel.add("button", undefined, "Help");
     
     //@include "./library/helpWindow.jsx"
+    //@include "./library/pseudoEffectApplier.jsx"
 
     helpButton.addEventListener("mousedown",optionInfo_Click);
 
@@ -110,8 +111,9 @@
         var rowAmt = parseInt(inputRowEdit.text);
         var columnSpacing = parseInt(columnSpacingEdit.text);
         var rowSpacing = parseInt(rowSpacingEdit.text);
+        var createRig = rigCheckbox;
         
-        sortGrid(columnAmt,rowAmt,columnSpacing,rowSpacing)
+        sortGrid(columnAmt,rowAmt,columnSpacing,rowSpacing,createRig.value)
 
       } catch(error) {
         alert("An error occured on line: " + error.line + "\nError message: " + error.message);
@@ -162,19 +164,19 @@
     }
 
 
-    function sortGrid(cols,rows,spacingX,spacingY){
+    function createCtrlLayer(expressionRig){
         var comp = getActiveComp();
         if(!comp) return null;
         var selLayers = getSelLayers();
         if(!selLayers) return null;
-
 
         var firstLayer = selLayers[0];
 
         var startX = firstLayer.property("ADBE Transform Group").property("ADBE Position").value[0];
         var startY = firstLayer.property("ADBE Transform Group").property("ADBE Position").value[1];
         var ctrlLayer;
-        var ctrlLayerName = "Grid Control";
+        var ctrlLayerName = "Grid Controls";
+
         for(var b = 1; b<=comp.numLayers; b++){
             var layer = comp.layer(b);
             if(layer.parent == comp.layer(ctrlLayerName)){
@@ -190,6 +192,7 @@
                 break;
             }
         }
+
 // Ctrl Layer Setup
         var ctrlLayerTrans = ctrlLayer.property("ADBE Transform Group");
         var ctrlPos = ctrlLayerTrans.property("ADBE Position");
@@ -216,14 +219,49 @@
         }
 
 
+        var presetName = "km-griddy-rig";
+
+        if(expressionRig){
+            pseudoEffect(comp,ctrlLayer, presetName);
+        }
+
+
+        return ctrlLayer
+
+    }
+
+    function sortGrid(cols,rows,spacingX,spacingY,expressionRig){
+        var comp = getActiveComp();
+        if(!comp) return null;
+        var selLayers = getSelLayers();
+        if(!selLayers) return null;
+
+
+        var controlLayer = createCtrlLayer(expressionRig);
+        if(!controlLayer) return null;
+
+        var controlGriddy = controlLayer.property("ADBE Effect Parade").property(1);
+        var controlColumns = controlGriddy.property("Columns");
+        controlColumns.setValue(cols);
+        var controlRows = controlGriddy.property("Rows");
+        controlRows.setValue(rows);
+        var controlSpacingX = controlGriddy.property("Spacing - X (px)");
+        controlSpacingX.setValue(spacingX);
+        var controlSpacingY = controlGriddy.property("Spacing - Y (px)");
+        controlSpacingY.setValue(spacingY);
+
+        var presetName = "km-griddy-rig";
+
         var found = false;
         for(var i = 0; i<selLayers.length; i++){
+            var layer = selLayers[i];
+            var startName = selLayers[0].name.split("-")[0];
+       
             var columns = i%cols;
             var row = Math.floor(i/rows);
-            var layer = selLayers[i];
-            if(!(layer.name === ctrlLayerName)){
+            if(!(layer.name === controlLayer.name)){
                 found = true;
-                layer.parent = ctrlLayer;
+                layer.parent = controlLayer;
                 var layerTrans = layer.property("ADBE Transform Group");
                 var layerPos = layerTrans.property("ADBE Position");
                 var layerScale = layerTrans.property("ADBE Scale");
@@ -233,12 +271,86 @@
                 
                 var xVal = (columns * (layerWidth + spacingX));
                 var yVal = (row * (layerHeight + spacingY));
+                var xPosSep = layerTrans.property("ADBE Position_0");
+                var yPosSep = layerTrans.property("ADBE Position_1");
+                if(expressionRig){
+                    layer.name =  startName + "-" + (i+1);
+                    if(layerPos.dimensionsSeparated){
+                        xPosSep.expression = 
+                        'const id = parseInt(name.split("-")[1]-1);\r'+
+                        'const ctrlLayer = thisComp.layer("Grid Controls");\r'+
+                        'const colControls = thisComp.layer("Grid Controls").effect("'+presetName+'")("Columns");\r'+
+                        'const rowControls = thisComp.layer("Grid Controls").effect("'+presetName+'")("Rows");\r'+
+                        'const {width} = sourceRectAtTime();\r'+
+                        'const widthTotal = width * thisLayer.transform.scale[0]/100;\r'+
+                        'const spacingX = thisComp.layer("Grid Controls").effect("'+presetName+'")("Spacing - X (px)");\r'+
+                        'const sortingPriority = thisComp.layer("Grid Controls").effect("'+presetName+'")("Sorting Priority").value;\r'+
+                        'let cols;\r'+
+                        '\r'+
+                        'if(sortingPriority == 1){\r'+
+                        '    cols = Math.floor(id%colControls);\r'+
+                        '} else{\r'+
+                        '    cols = Math.floor(id / rowControls);\r'+
+                        '}\r'+
+                        '\r'+
+                        '\r'+
+                        'const x = cols * (widthTotal + spacingX);\r'+
+                        'x';
+                        
+                        yPosSep.expression = 
+                        'const id = parseInt(name.split("-")[1]-1);\r'+
+                        'const ctrlLayer = thisComp.layer("Grid Controls");\r'+
+                        'const colControls = thisComp.layer("Grid Controls").effect("'+presetName+'")("Columns");\r'+
+                        'const rowControls = thisComp.layer("Grid Controls").effect("'+presetName+'")("Rows");\r'+
+                        'const {height} = sourceRectAtTime();\r'+
+                        'const heightTotal = height * thisLayer.transform.scale[1]/100;\r'+
+                        'const spacingY = thisComp.layer("Grid Controls").effect("'+presetName+'")("Spacing - Y (px)");\r'+
+                        'const sortingPriority = thisComp.layer("Grid Controls").effect("'+presetName+'")("Sorting Priority").value;\r'+
+                        'let rows;\r'+
+                        '\r'+
+                        'if(sortingPriority == 1){\r'+
+                        '    rows = Math.floor(id/colControls);\r'+
+                        '} else{\r'+
+                        '    rows = id % rowControls;\r'+
+                       ' }\r'+
+                        '\r'+
+                        'const y = rows * (heightTotal + spacingY);\r'+
+                        'y';
+                    } else{
+                        layerPos.expression =
+                        'const id = parseInt(name.split("-")[1]-1);\r'+
+                        'const ctrlLayer = thisComp.layer("Grid Controls");\r'+
+                        'const colControls = thisComp.layer("Grid Controls").effect("'+presetName+'")("Columns");\r'+
+                        'const rowControls = thisComp.layer("Grid Controls").effect("'+presetName+'")("Rows");\r'+
+                        'const {width,height} = sourceRectAtTime();\r'+
+                        'const widthTotal = width * thisLayer.transform.scale[0]/100;\r'+
+                        'const heightTotal = height * thisLayer.transform.scale[1]/100;\r'+
+                        'const spacingX = thisComp.layer("Grid Controls").effect("'+presetName+'")("Spacing - X (px)");\r'+
+                        'const spacingY = thisComp.layer("Grid Controls").effect("'+presetName+'")("Spacing - Y (px)");\r'+
+                        'const sortingPriority = thisComp.layer("Grid Controls").effect("'+presetName+'")("Sorting Priority").value;\r'+
+                        'let cols;\r'+
+                        'let rows;\r'+
+                        '\r'+
+                        'if(sortingPriority == 1){\r'+
+                        '    cols = Math.floor(id%colControls);\r'+
+                        '   rows = Math.floor(id/colControls);\r'+
+                        '} else{\r'+
+                        '    cols = Math.floor(id / rowControls);\r'+
+                          '  rows = id % rowControls;\r'+
+                        '}\r'+
+                       '\r'+     
+                     'const x = cols * (widthTotal + spacingX);\r'+
+                     'const y = rows * (heightTotal + spacingY);\r'+
+                        '[x, y]';
 
-                if(layerPos.dimensionsSeparated){
-                    layerTrans.property("ADBE Position_0").setValue(xVal);
-                    layerTrans.property("ADBE Position_1").setValue(yVal);
-                } else{
-                    layerPos.setValue([xVal,yVal]);
+                    }
+                } else {
+                    if(layerPos.dimensionsSeparated){
+                        xPosSep.setValue(xVal);
+                        yPosSep.setValue(yVal);
+                    } else{
+                        layerPos.setValue([xVal,yVal]);
+                    }
                 }
             }
         }
