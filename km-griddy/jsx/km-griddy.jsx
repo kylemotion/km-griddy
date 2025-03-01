@@ -87,7 +87,7 @@
     rigGroup.orientation = "row";
     rigGroup.alignChildren = ["fill", "fill"];
     var rigCheckbox = rigGroup.add("checkbox", undefined, "Create Expression Rig");
-    rigCheckbox.value = true;
+    rigCheckbox.value = false;
 
     // Execute Panel
     var executePanel = win.add("panel", undefined);
@@ -104,24 +104,32 @@
     helpButton.addEventListener("mousedown",optionInfo_Click);
 
     runButton.onClick = function(){
-    try {
-        app.beginUndoGroup("What script does");
+        try {
+            app.beginUndoGroup("What script does");
 
-        var columnAmt = parseInt(inputColsEdit.text);
-        var rowAmt = parseInt(inputRowEdit.text);
-        var columnSpacing = parseInt(columnSpacingEdit.text);
-        var rowSpacing = parseInt(rowSpacingEdit.text);
-        var createRig = rigCheckbox;
-        
-        sortGrid(columnAmt,rowAmt,columnSpacing,rowSpacing,createRig.value)
+            var columnAmt = parseInt(inputColsEdit.text);
+            var rowAmt = parseInt(inputRowEdit.text);
+            var columnSpacing = Math.floor(parseInt(columnSpacingEdit.text));
+            var rowSpacing = Math.floor(parseInt(rowSpacingEdit.text));
 
-      } catch(error) {
-        alert("An error occured on line: " + error.line + "\nError message: " + error.message);
-      } finally {
-        // this always runs no matter what
-        app.endUndoGroup()
-      }
-      
+            if(isNaN(columnAmt) || columnAmt === "" ||
+             isNaN(rowAmt) ||  rowAmt === "" ||
+             isNaN(columnSpacing) || columnSpacing === "" ||
+             isNaN(rowSpacing)|| rowSpacing === ""){
+                alert("Whoops!\rYou need to input a number for the columns, rows, and spacing fields. Try again.");
+                return
+            }
+
+            var createRig = rigCheckbox;
+
+            sortGrid(columnAmt, rowAmt, columnSpacing, rowSpacing, createRig.value);
+
+        } catch(error) {
+            alert("An error occured on line: " + error.line + "\nError message: " + error.message);
+        } finally {
+            // this always runs no matter what
+            app.endUndoGroup();
+        }
     }
 
     function getProj(){
@@ -240,17 +248,19 @@
         var controlLayer = createCtrlLayer(expressionRig);
         if(!controlLayer) return null;
 
-        var controlGriddy = controlLayer.property("ADBE Effect Parade").property(1);
-        var controlColumns = controlGriddy.property("Columns");
-        controlColumns.setValue(cols);
-        var controlRows = controlGriddy.property("Rows");
-        controlRows.setValue(rows);
-        var controlSpacingX = controlGriddy.property("Spacing - X (px)");
-        controlSpacingX.setValue(spacingX);
-        var controlSpacingY = controlGriddy.property("Spacing - Y (px)");
-        controlSpacingY.setValue(spacingY);
-
-        var presetName = "km-griddy-rig";
+        if(expressionRig) {
+            var controlGriddy = controlLayer.property("ADBE Effect Parade").property(1);
+            var controlColumns = controlGriddy.property("Columns");
+            controlColumns.setValue(cols);
+            var controlRows = controlGriddy.property("Rows");
+            controlRows.setValue(rows);
+            var controlSpacingX = controlGriddy.property("Spacing - X (px)");
+            controlSpacingX.setValue(spacingX);
+            var controlSpacingY = controlGriddy.property("Spacing - Y (px)");
+            controlSpacingY.setValue(spacingY);
+    
+            var presetName = "km-griddy-rig";
+        }
 
         var found = false;
         for(var i = 0; i<selLayers.length; i++){
